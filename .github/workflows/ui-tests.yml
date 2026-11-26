@@ -115,8 +115,7 @@ jobs:
             --console=plain \
             -Dheadless=true \
             -DbrowserSize="$BROWSER_SIZE" \
-            -Dselenide.browser=CHROME_FOR_TESTING \
-            -Dselenide.chrome.driver="$CHROMEDRIVER_BIN"
+            -Dwebdriver.chrome.driver="$CHROMEDRIVER_BIN"
         env:
           BROWSER_SIZE: ${{ github.event.inputs.browserSize }}
 
