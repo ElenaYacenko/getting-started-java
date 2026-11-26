@@ -92,7 +92,7 @@ jobs:
         run: |
           java -version
           JAVA_VER=$(java -version 2>&1 | grep -oP 'version \K[\d.]+')
-          if [[ ! "$JAVA_VER" =~ ^21\. ]]; then
+          if [[ ! "$JAVA_VER" =~ ^21\.[\d.]+ ]]; then
             echo "::error::Java version mismatch: expected 21.x, got $JAVA_VER"
             exit 1
           fi
