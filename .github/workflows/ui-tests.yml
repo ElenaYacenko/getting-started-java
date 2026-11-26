@@ -60,6 +60,8 @@ jobs:
         uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4
         with:
           chrome-version: 153.0.8010.52
+          install-chromedriver: true
+          install-dependencies: true
 
       - name: Install matching ChromeDriver
         run: |
@@ -113,6 +115,7 @@ jobs:
             --console=plain \
             -Dheadless=true \
             -DbrowserSize="$BROWSER_SIZE" \
+            -Dselenide.browser=CHROME_FOR_TESTING \
             -Dselenide.chrome.driver="$CHROMEDRIVER_BIN"
         env:
           BROWSER_SIZE: ${{ github.event.inputs.browserSize }}
