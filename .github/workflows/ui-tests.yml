@@ -108,12 +108,8 @@ jobs:
       # 7. Run tests
       - name: Run UI tests
         run: |
-          CHROME_BIN="/opt/hostedtoolcache/setup-chrome/chrome/153.0.8010.52/x64/chrome"
-          CHROMEDRIVER_BIN="$(which chromedriver)"
           ./gradlew test \
             --console=plain \
-            -Dselenide.browserBinary="$CHROME_BIN" \
-            -Dwebdriver.chrome.driver="$CHROMEDRIVER_BIN" \
             -Dheadless=true \
             -DbrowserSize="$BROWSER_SIZE"
         env:
