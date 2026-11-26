@@ -1,0 +1,183 @@
+# Phase 5 — GitHub Actions
+# UI tests for GitHub search (Selenide + JUnit 6 + Allure 3)
+# Trigger: workflow_dispatch only (no push/pull_request/schedule).
+
+name: UI Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: Browser to run tests in
+        type: choice
+        options:
+          - chrome
+        default: chrome
+      browserSize:
+        description: Browser size in WxH format (e.g. 1920x1080)
+        type: string
+        default: "1920x1080"
+        validation: '^([0-9]{3,4}x[0-9]{3,4})$'
+
+env:
+  BASE_URL: https://github.com
+  HEADLESS: "true"
+  BROWSER: chrome
+  BROWSER_SIZE: ${{ github.event.inputs.browserSize }}
+  JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-tests-github-search
+  cancel-in-progress: false
+
+jobs:
+  ui-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      # 1. Checkout
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      # 2. Setup Java (Temurin 21)
+      - name: Setup Java 21 (Temurin)
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # 3. Setup Gradle
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+
+      # 4. Setup Chrome for Testing + ChromeDriver (153.0.8010.52)
+      - name: Setup Chrome for Testing
+        uses: browser-actions/setup-chrome@48ad923757ca74d66703209fe939badbdf80f2f4
+        with:
+          chrome-version: 153.0.8010.52
+
+      - name: Install matching ChromeDriver
+        run: |
+          CHROME_VERSION=$(chrome --version | grep -oP '[\d.]+')
+          echo "Chrome version: $CHROME_VERSION"
+          # Chrome for Testing provides chromedriver at the same version
+          # The setup-chrome action installs it automatically; verify
+          chromedriver --version
+          if [ "$CHROME_VERSION" != "153.0.8010.52" ]; then
+            echo "::error::Chrome and ChromeDriver version mismatch: Chrome=$CHROME_VERSION, expected=153.0.8010.52"
+            exit 1
+          fi
+          echo "Chrome and ChromeDriver versions match: $CHROME_VERSION"
+
+      # 5. Verify Java 21 and Allure CLI version
+      - name: Download and verify Allure CLI
+        run: |
+          ALLURE_URL="https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/2.46.1/allure-commandline-2.46.1.tgz"
+          ALLURE_SHA256="37428164f310c8d137cfdd2c3a25d049b233261ddab13e1bd4dfd7627b5cbf8d"
+          ALLURE_TARBALL="/tmp/allure-2.46.1.tgz"
+          echo "Downloading Allure CLI from $ALLURE_URL ..."
+          curl -fsSL -o "$ALLURE_TARBALL" "$ALLURE_URL"
+          echo "$ALLURE_SHA256  $ALLURE_TARBALL" | sha256sum -c
+          tar -xzf "$ALLURE_TARBALL" -C /tmp
+          ALLURE_BIN="/tmp/allure-2.46.1/bin/allure"
+          "$ALLURE_BIN" --version
+          echo "ALLURE_BIN=$ALLURE_BIN" >> "$GITHUB_ENV"
+
+      - name: Verify Java version
+        run: |
+          java -version
+          JAVA_VER=$(java -version 2>&1 | grep -oP 'version \K[\d.]+')
+          if [[ ! "$JAVA_VER" =~ ^21\. ]]; then
+            echo "::error::Java version mismatch: expected 21.x, got $JAVA_VER"
+            exit 1
+          fi
+          echo "Java version verified: $JAVA_VER"
+
+      # 6. Compile tests (separate from run)
+      - name: Compile tests
+        id: compile
+        run: ./gradlew testClasses --console=plain
+
+      # 7. Run tests
+      - name: Run UI tests
+        run: |
+          CHROME_BIN="$(setup-chrome --which chrome)"
+          CHROMEDRIVER_BIN="$(which chromedriver)"
+          ./gradlew test \
+            --console=plain \
+            -Dselenide.browserBinary="$CHROME_BIN" \
+            -Dwebdriver.chrome.driver="$CHROMEDRIVER_BIN" \
+            -Dheadless=true \
+            -DbrowserSize="$BROWSER_SIZE"
+        env:
+          BROWSER_SIZE: ${{ github.event.inputs.browserSize }}
+
+      # 8. Upload allure-results (if compile succeeded, even if tests failed)
+      - name: Upload allure-results
+        if: steps.compile.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: allure-results
+          path: build/allure-results
+          retention-days: 14
+
+      # 9. Upload JUnit + Gradle reports
+      - name: Upload JUnit and Gradle reports
+        if: steps.compile.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: junit-and-gradle-report
+          path: |
+            build/test-results/test
+            build/reports/tests/test
+          retention-days: 14
+
+      # 10. Generate Allure report (fail if no results)
+      - name: Generate Allure report
+        id: generate
+        if: steps.compile.outcome == 'success'
+        run: |
+          RESULT_FILES=$(find build/allure-results -name '*-result.json' | wc -l)
+          if [ "$RESULT_FILES" -eq 0 ]; then
+            echo "::error::No Allure test results found (expected at least 1 *-result.json)"
+            exit 1
+          fi
+          echo "Found $RESULT_FILES test result(s), generating report ..."
+          "$ALLURE_BIN" generate build/allure-results --clean -o build/allure-report --single-file
+
+    outputs:
+      # Phase 5: publish Pages if report generated successfully (regardless of test outcome)
+      # Phase 9 hardening (green tests only) — to be applied later
+      report_generated: ${{ steps.generate.outcome == 'success' && 'true' || 'false' }}
+
+  # Deploy report job (separate for pages permissions)
+  # Publishes Pages only from default branch AND only if Allure report was generated successfully.
+  # Phase 9 hardening (green tests only) — to be applied later.
+  deploy-report:
+    needs: ui-tests
+    if: >-
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      && needs.ui-tests.outputs.report_generated == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9
+        with:
+          path: build/allure-report
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346

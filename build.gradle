@@ -30,4 +30,13 @@ tasks.withType(JavaCompile) {
 
 test {
     useJUnitPlatform()
+
+    // Phase 5: optionally pass browser binary and driver paths from CI
+    // (only applied if the properties are set via -D flags)
+    if (System.getProperty("selenide.browserBinary")) {
+        systemProperty "selenide.browserBinary", System.getProperty("selenide.browserBinary")
+    }
+    if (System.getProperty("webdriver.chrome.driver")) {
+        systemProperty "webdriver.chrome.driver", System.getProperty("webdriver.chrome.driver")
+    }
 }
