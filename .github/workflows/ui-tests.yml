@@ -108,10 +108,12 @@ jobs:
       # 7. Run tests
       - name: Run UI tests
         run: |
+          CHROMEDRIVER_BIN="$(which chromedriver)"
           ./gradlew test \
             --console=plain \
             -Dheadless=true \
-            -DbrowserSize="$BROWSER_SIZE"
+            -DbrowserSize="$BROWSER_SIZE" \
+            -Dselenide.chrome.driver="$CHROMEDRIVER_BIN"
         env:
           BROWSER_SIZE: ${{ github.event.inputs.browserSize }}
 
