@@ -24,7 +24,6 @@ env:
   HEADLESS: "true"
   BROWSER: chrome
   BROWSER_SIZE: ${{ github.event.inputs.browserSize }}
-  JAVA_HOME: ${{ steps.setup-java.outputs.java-home }}
 
 permissions:
   contents: read
